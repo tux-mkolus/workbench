@@ -76,6 +76,9 @@
 
  Cuando necesitemos meter un equipo en la red del cliente, configuramos un puerto del switch en la VLAN 1000 y simplemente conectamos el cable de red.
 
+ Por el momento, los servers solo se emulan con la presencia de la IP en la red del server (usualmente la LAN). Solo se puede verificar que el paquete llegue.
+ 
+
 
 
 
