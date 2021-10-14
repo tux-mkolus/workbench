@@ -53,6 +53,27 @@ def dhcp_pool (address, network):
             (network[gateway_offset+1], network[-2])
         ])
 
+# create IP pools
+def create_ip_pool(basename, pools):
+    pool_script = ""
+    if len(pools) == 1:
+        pool_script += "/ip pool add name={interface}_pool0 ranges={ranges}\n".format(
+            interface=basename,
+            ranges=mktrange(pools[0][0], pools[0][1])
+        )
+    else:
+        pool_script += "/ip pool add name={interface}_pool1 ranges={ranges}\n".format(
+            interface=basename,
+            ranges=mktrange(pools[1][0], pools[1][1])
+        )
+
+        pool_script += "/ip pool add name={interface}_pool0 next-pool={interface}_pool1 ranges={ranges}\n".format(
+            interface=basename,
+            ranges=mktrange(pools[0][0], pools[0][1])
+        )
+
+    return(pool_script)
+
 # create dhcp server script
 def dhcp_server (interface, address, network):
     dhcp_server = dict()
@@ -84,21 +105,7 @@ def dhcp_server (interface, address, network):
         interface=interface
     )
 
-    if len(dhcp_server["pools"]) == 1:
-        dhcp_script += "/ip pool add name={interface}_pool0 ranges={ranges}\n".format(
-            interface=interface,
-            ranges=mktrange(dhcp_server["pools"][0][0], dhcp_server["pools"][0][1])
-        )
-    else:
-        dhcp_script += "/ip pool add name={interface}_pool1 ranges={ranges}\n".format(
-            interface=interface,
-            ranges=mktrange(dhcp_server["pools"][1][0], dhcp_server["pools"][1][1])
-        )
-
-        dhcp_script += "/ip pool add name={interface}_pool0 next-pool={interface}_pool1 ranges={ranges}\n".format(
-            interface=interface,
-            ranges=mktrange(dhcp_server["pools"][0][0], dhcp_server["pools"][0][1])
-        )
+    dhcp_script += create_ip_pool(interface, dhcp_server["pools"])
 
     dhcp_log += " pools={pools}".format(
         pools = ",".join([mktrange(x[0], x[1]) for x in dhcp_server["pools"]])
@@ -329,6 +336,26 @@ for wan_interface in csl(config["wans"]["interfaces"]):
 
             # DHCP Server
             o.write(dhcp_server(wan_interface, address, network))
+        elif config[wan_interface]["type"] == "pppoe":
+            # pppoe
+            (address, network) = cidr_to_ip_network(config[wan_interface]["pppoe gateway"])
+            # ip pools
+            o.write(create_ip_pool(wan_interface, dhcp_pool(address, network)))
+            # ppp profile
+            o.write("/ppp profile add change-tcp-mss=yes local-address={address} name={interface}_profile remote-address={interface}_pool0 use-encryption=yes\n".format(
+                interface=wan_interface,
+                address=address
+            ))
+            # ppp secret
+            o.write("/ppp secret add name=\"{username}\" password=\"{password}\" profile={interface}_profile service=pppoe\n".format(
+                interface=wan_interface,
+                username=config[wan_interface]["pppoe user"],
+                password=config[wan_interface]["pppoe password"]
+            ))
+            # pppoe server
+            o.write("/interface pppoe-server server add default-profile={interface}_profile disabled=no interface={interface} service-name={interface}\n".format(
+                interface=wan_interface
+            ))
 
 log("done.")
 o.close()
