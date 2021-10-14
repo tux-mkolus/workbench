@@ -136,6 +136,29 @@ def cidr_to_ip_network(addr):
         ipaddress.ip_network(addr, strict=False)
     )
 
+# convert network address to ip address list
+def network_to_ip_list(network: str, strict: bool=True):
+    if "/" in network:
+        # network address
+        try:
+            mapped_addrs = list(ipaddress.ip_network(network, strict=strict))
+        except ValueError:
+            log("network_to_ip_list(): invalid network address: {mapped_expr}".format(
+                mapped_expr=network
+            ))
+            return(None)
+    else:
+        # ip address
+        try:
+            mapped_addrs = [ ipaddress.ip_address(network) ]
+        except ValueError:
+            log("network_to_ip_list():: {mapped_expr}".format(
+                mapped_expr=network
+            ))
+            return(None)
+    
+    return(mapped_addrs)
+
 # command line
 parser = argparse.ArgumentParser(description="configurador de entornos simulados de red WAN y LAN")
 parser.add_argument("--config", help="archivo de configuración", required=True)
@@ -202,7 +225,7 @@ else:
     log("configured uplink interface {uplink}: address={address}/{prefixlen} gateway={gateway}".format(
         uplink=config["uplink"]["interface"],
         address=ul_ip,
-        netmask=ul_network.prefixlen,
+        prefixlen=ul_network.prefixlen,
         gateway=gw_ip
     ))    
 
@@ -319,10 +342,7 @@ for wan_interface in csl(config["wans"]["interfaces"]):
             interface=wan_interface,
             network=network.network_address
         ))
-
-        continue
-
-    if config.has_option(wan_interface,"type"):
+    elif config.has_option(wan_interface, "type"):
         if config[wan_interface]["type"] == "dhcp":
             # dhcp addressing
             (address, network) = cidr_to_ip_network(config[wan_interface]["address"])
@@ -356,6 +376,62 @@ for wan_interface in csl(config["wans"]["interfaces"]):
             o.write("/interface pppoe-server server add default-profile={interface}_profile disabled=no interface={interface} service-name={interface}\n".format(
                 interface=wan_interface
             ))
+
+    if config.has_option(wan_interface, "map"):
+        ip_mapping = csl(config[wan_interface]["map"])
+        for mapping in ip_mapping:
+            # mapping expression validation
+            (mapped_expr, wan_expr) = mapping.strip().split(":")
+            mapped_addrs = network_to_ip_list(mapped_expr)
+            wan_addrs = network_to_ip_list(wan_expr, strict=False)
+
+            if mapped_addrs is None or wan_addrs is None:
+                sys.exit(-1)
+
+            if len(mapped_addrs) != len(wan_addrs):
+                log("\tcannot map {mapped_expr} to {wan_expr}, aborting.".format(
+                    mapped_expr=mapped_expr,
+                    wan_expr=wan_expr
+                ))
+                sys.exit(-1)
+
+            comment="map {mapped_expr} to {wan_expr}".format(
+                    mapped_expr=mapped_expr,
+                    wan_expr=wan_expr                        
+                )
+
+            o.write("# map {mapped_expr} to {wan_expr}\n".format(
+                    mapped_expr=mapped_expr,
+                    wan_expr=wan_expr
+                ))
+
+            # address
+            o.write("/ip address\n")
+            for ip in mapped_addrs:
+
+                o.write("add address={ip}/{network.prefixlen} comment=\"{comment}\" interface={interface} network={network}\n".format(
+                    ip=ip,
+                    comment=comment,
+                    network=ul_network,
+                    interface=config["uplink"]["interface"]
+                ))
+
+            # destination nat
+            o.write("/ip firewall nat add action=dst-nat chain=dstnat comment=\"{comment}\" dst-address={mapped_expr} in-interface={interface} to-addresses={wan_expr}\n".format(
+                mapped_expr=mapped_expr,
+                wan_expr=wan_expr,
+                comment=comment,
+                interface=config["uplink"]["interface"]
+            ))
+
+            # source nat
+            o.write("/ip firewall nat add action=src-nat chain=srcnat comment=\"{comment}\" src-address={wan_expr} to-addresses={mapped_expr}\n".format(
+                mapped_expr=mapped_expr,
+                wan_expr=wan_expr,
+                comment=comment,
+            ))                
+
+
 
 log("done.")
 o.close()
