@@ -57,17 +57,17 @@ def dhcp_pool (address, network):
 def create_ip_pool(basename, pools):
     pool_script = ""
     if len(pools) == 1:
-        pool_script += "/ip pool add name={interface}_pool0 ranges={ranges}\n".format(
+        pool_script += "/ip pool add name={interface}_pool0 ranges={ranges} comment=\"workbench\"\n".format(
             interface=basename,
             ranges=mktrange(pools[0][0], pools[0][1])
         )
     else:
-        pool_script += "/ip pool add name={interface}_pool1 ranges={ranges}\n".format(
+        pool_script += "/ip pool add name={interface}_pool1 ranges={ranges} comment=\"workbench\"\n".format(
             interface=basename,
             ranges=mktrange(pools[1][0], pools[1][1])
         )
 
-        pool_script += "/ip pool add name={interface}_pool0 next-pool={interface}_pool1 ranges={ranges}\n".format(
+        pool_script += "/ip pool add name={interface}_pool0 next-pool={interface}_pool1 ranges={ranges} comment=\"workbench\"\n".format(
             interface=basename,
             ranges=mktrange(pools[0][0], pools[0][1])
         )
@@ -111,11 +111,11 @@ def dhcp_server (interface, address, network):
         pools = ",".join([mktrange(x[0], x[1]) for x in dhcp_server["pools"]])
     )
 
-    dhcp_script += "/ip dhcp-server add address-pool={interface}_pool0 bootp-support=none disabled=no interface={interface} lease-time=1h name={interface}_server\n".format(
+    dhcp_script += "/ip dhcp-server add address-pool={interface}_pool0 bootp-support=none disabled=no interface={interface} lease-time=1h name={interface}_server comment=\"workbench\"\n".format(
         interface=interface
     )
 
-    dhcp_script += "/ip dhcp-server network add address={network} {dns_server}{domain} gateway={gateway} netmask={prefixlen}\n".format(
+    dhcp_script += "/ip dhcp-server network add address={network} {dns_server}{domain} gateway={gateway} netmask={prefixlen} comment=\"workbench\"\n".format(
         network=network,
         dns_server = ("dns-server=" + (",".join(dhcp_server["dns servers"]))) if "dns_servers" in dhcp_server else "",
         domain="domain=" + dhcp_server["domain"] if "domain" in dhcp_server else "",
@@ -173,7 +173,9 @@ if not os.path.isfile(args.config):
     ), "CRITICAL")
     sys.exit(-1)
 
-log("reading configuration file")
+log("reading configuration file '{config}'".format(
+    config=args.config
+))
 
 config = configparser.ConfigParser()
 try:
@@ -192,7 +194,7 @@ else:
 
 try:
     o = open(output_filename, "w", encoding="utf-8")
-    log("created output file {output_filename}, aborting.".format(
+    log("created output file {output_filename}".format(
         output_filename=output_filename
     ))    
 except:
@@ -205,7 +207,7 @@ except:
 o.write("# Uplink interface\n")
 
 if config["uplink"]["address"] == "dhcp":
-    o.write("/ip dhcp-client add disabled=no interface={uplink}\n".format(
+    o.write("/ip dhcp-client add disabled=no interface={uplink} comment=\"workbench\"\n".format(
         uplink=config["uplink"]["interface"] 
     ))
     log("configured uplink interface {uplink}: dhcp client".format(
@@ -213,20 +215,24 @@ if config["uplink"]["address"] == "dhcp":
     ))
 else:
     (ul_ip, ul_network) = str2ipnetwork(config["uplink"]["address"])
-    (gw_ip, gw_network) = str2ipnetwork(config["uplink"]["gateway"])
-    o.write("/ip address add interface={uplink} address={address}/{netmask}\n".format(
+    o.write("/ip address add interface={uplink} address={address}/{netmask} comment=\"workbench\"\n".format(
         uplink=config["uplink"]["interface"],
         address=ul_ip,
         netmask=ul_network.prefixlen
     ))
-    o.write("/ip route add distance=1 gateway={gateway}\n".format(
-        gateway=gw_ip
-    ))
+
+    if "gateway" in config["uplink"]:
+        (gw_ip, gw_network) = str2ipnetwork(config["uplink"]["gateway"])
+
+        o.write("/ip route add distance=1 gateway={gateway} comment=\"workbench\"\n".format(
+            gateway=gw_ip
+        ))
+
     log("configured uplink interface {uplink}: address={address}/{prefixlen} gateway={gateway}".format(
         uplink=config["uplink"]["interface"],
         address=ul_ip,
         prefixlen=ul_network.prefixlen,
-        gateway=gw_ip
+        gateway=gw_ip if "gateway" in config["uplink"] else "none"
     ))    
 
 # LAN: layer 2/3 configuration
@@ -252,9 +258,9 @@ for lan_interface in csl(config["lans"]["interfaces"]):
 
     # optional description
     if config.has_option(lan_interface,"description"):
-        comment = " comment=\"" + config[lan_interface]["description"] + "\""
+        comment = " comment=\"workbench/" + config[lan_interface]["description"] + "\""
     else:
-        comment = ""
+        comment = "comment=\"workbench\""
 
     used_vlans.add(vlan_id)
 
@@ -282,10 +288,11 @@ for lan_interface in csl(config["lans"]["interfaces"]):
             network=network.network_address
         ))
 
-        log("\taddress={ip}/{netmask} network={network}".format(
+        log("\taddress={ip}/{netmask} network={network}{comment}".format(
             ip=address,
             netmask=network.prefixlen,
-            network=network.network_address            
+            network=network.network_address,
+            comment=comment            
         ))
 
         # DHCP Server
@@ -299,7 +306,7 @@ for lan_interface in csl(config["lans"]["interfaces"]):
             
             o.write(dhcp_server(lan_interface, gateway, network))
             
-# LAN: layer 2/3 configuration
+# WAN: layer 2/3 configuration
 for wan_interface in csl(config["wans"]["interfaces"]):
     log("configuring wan interface '{wan_interface}'".format(
         wan_interface=wan_interface
@@ -311,9 +318,9 @@ for wan_interface in csl(config["wans"]["interfaces"]):
 
     # optional description
     if config.has_option(wan_interface,"description"):
-        comment = " comment=\"" + config[wan_interface]["description"] + "\""
+        comment = " comment=\"workbench/" + config[wan_interface]["description"] + "\""
     else:
-        comment = ""
+        comment = " comment=\"workbench\""
 
     # vlan 
     vlan_id = int(config[wan_interface]["vlan"])
@@ -362,19 +369,22 @@ for wan_interface in csl(config["wans"]["interfaces"]):
             # ip pools
             o.write(create_ip_pool(wan_interface, dhcp_pool(address, network)))
             # ppp profile
-            o.write("/ppp profile add change-tcp-mss=yes local-address={address} name={interface}_profile remote-address={interface}_pool0 use-encryption=yes\n".format(
+            o.write("/ppp profile add change-tcp-mss=yes local-address={address} name={interface}_profile remote-address={interface}_pool0 use-encryption=yes{comment}\n".format(
                 interface=wan_interface,
+                comment=comment,
                 address=address
             ))
             # ppp secret
-            o.write("/ppp secret add name=\"{username}\" password=\"{password}\" profile={interface}_profile service=pppoe\n".format(
+            o.write("/ppp secret add name=\"{username}\" password=\"{password}\" profile={interface}_profile service=pppoe{comment}\n".format(
                 interface=wan_interface,
                 username=config[wan_interface]["pppoe user"],
-                password=config[wan_interface]["pppoe password"]
+                password=config[wan_interface]["pppoe password"],
+                comment=comment
             ))
             # pppoe server
-            o.write("/interface pppoe-server server add default-profile={interface}_profile disabled=no interface={interface} service-name={interface}\n".format(
-                interface=wan_interface
+            o.write("/interface pppoe-server server add default-profile={interface}_profile disabled=no interface={interface} service-name={interface}{comment}\n".format(
+                interface=wan_interface,
+                comment=comment
             ))
 
     if config.has_option(wan_interface, "map"):
@@ -388,28 +398,30 @@ for wan_interface in csl(config["wans"]["interfaces"]):
             if mapped_addrs is None or wan_addrs is None:
                 sys.exit(-1)
 
+            wan_spec = str(ipaddress.ip_network(wan_expr, strict=False))
+
             if len(mapped_addrs) != len(wan_addrs):
                 log("\tcannot map {mapped_expr} to {wan_expr}, aborting.".format(
                     mapped_expr=mapped_expr,
-                    wan_expr=wan_expr
+                    wan_expr=wan_spec
                 ))
                 sys.exit(-1)
 
-            comment="map {mapped_expr} to {wan_expr}".format(
+            comment="workbench/map {mapped_expr} to {wan_spec}".format(
                     mapped_expr=mapped_expr,
-                    wan_expr=wan_expr                        
+                    wan_spec=wan_spec                        
                 )
 
-            o.write("# map {mapped_expr} to {wan_expr}\n".format(
+            o.write("\n# map {mapped_expr} to {wan_spec}\n".format(
                     mapped_expr=mapped_expr,
-                    wan_expr=wan_expr
+                    wan_spec=wan_spec
                 ))
 
             # address
             o.write("/ip address\n")
             for ip in mapped_addrs:
 
-                o.write("add address={ip}/{network.prefixlen} comment=\"{comment}\" interface={interface} network={network}\n".format(
+                o.write("add address={ip}/{network.prefixlen} comment=\"{comment}\" interface={interface}\n".format(
                     ip=ip,
                     comment=comment,
                     network=ul_network,
@@ -417,21 +429,19 @@ for wan_interface in csl(config["wans"]["interfaces"]):
                 ))
 
             # destination nat
-            o.write("/ip firewall nat add action=dst-nat chain=dstnat comment=\"{comment}\" dst-address={mapped_expr} in-interface={interface} to-addresses={wan_expr}\n".format(
+            o.write("/ip firewall nat add action=dst-nat chain=dstnat comment=\"{comment}\" dst-address={mapped_expr} in-interface={interface} to-addresses={wan_spec}\n".format(
                 mapped_expr=mapped_expr,
-                wan_expr=wan_expr,
+                wan_spec=wan_spec,
                 comment=comment,
                 interface=config["uplink"]["interface"]
             ))
 
             # source nat
-            o.write("/ip firewall nat add action=src-nat chain=srcnat comment=\"{comment}\" src-address={wan_expr} to-addresses={mapped_expr}\n".format(
+            o.write("/ip firewall nat add action=src-nat chain=srcnat comment=\"{comment}\" src-address={wan_spec} to-addresses={mapped_expr}\n".format(
                 mapped_expr=mapped_expr,
-                wan_expr=wan_expr,
+                wan_spec=wan_spec,
                 comment=comment,
             ))                
-
-
 
 log("done.")
 o.close()
