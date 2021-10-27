@@ -4,13 +4,13 @@
 
 - Compró un FortiGate 100F, de aquí solo nos interesan los puertos **port1 a port3, wan1 y wan2**.
 - Tiene un Mikrotik configurado así:
-    - ether1: LAN 192.168.0.1/24
-    - ether2: DMZ 192.168.1.1/24
-    - ether3: Servers 192.168.2.1/24
-    - ether4: WAN1 20 mbps 168.121.37.30/24, gateway: 168.121.37.1
-    - ether5: WAN2 50 mbps 186.138.64.106/29, gateway: 186.138.64.105
-- Las WANs tienen configuración estática.
-- Su Mikrotik oficial de DHCP server en las ether1, ether2 y ether3, por lo que no necesitaremos configurar uno nosotros.
+    - **ether1**: LAN **192.168.0.1/24**
+    - **ether2**: DMZ **192.168.1.1/24**
+    - **ether3**: Servers **192.168.2.1/24**
+    - **ether4**: WAN1 20 mbps **168.121.37.30/24**, gateway: **168.121.37.1**
+    - **ether5**: WAN2 50 mbps **186.138.64.106/29**, gateway: **186.138.64.105**
+- Las WANs tienen **configuración estática**.
+- Su **Mikrotik** oficia de **DHCP server** en las **ether1**, **ether2** y **ether3**, por lo que no necesitaremos configurar uno nosotros.
 
 ## ¿Qué necesitamos?
 
@@ -20,7 +20,7 @@
 - **2 ports por cada conexión LAN**, **1 port por cada conexión WAN**.
     - *NOTA*: como las LAN las vamos a probar, en un puerto asignado a una LAN vamos a conectar el futuro router (el que estamos configurando) y en el otro puerto vamos a conectar la PC para hacer las pruebas, por eso necesitamos dos.
 - Un **rango de red** que usaremos para mapear (dst-nat + src-nat) las IPs de WAN1 y WAN2. El script está preparado para usar un rango aparte, no uno existente, la idea es que no haya conflictos con nuestra LAN.
-    - PRO TIP: Se puede usar un rango de interfaz virtual de metarouter.
+    - PRO TIP: Se puede usar un rango de interfaz virtual de _MetaRouter_.
 
 ## Planificando
 
@@ -44,7 +44,7 @@ Usaremos un truco de *NAT* para *comunicarnos con las IP de WAN 168.121.37.30 y 
 - 192.168.11.30 -> 168.121.37.30
 - 192.168.11.106 -> 186.138.64.106
 
-### Metarouter
+### MetaRouter
 
 Para no usar un puerto físico aprovecharemos un *MetaRouter* que tendrá una *pata* hacia el Mikrotik real en nuestra LAN, usando una interfaz virtual. Para los fines de documentación asumiremos que esta interfaz es ether1 del lado del router virtual. El *Mikrotik real*, que oficiará de *gateway a Internet*, tendrá la IP *192.168.11.1* mientras que el *router virtual* -que hace toda la magia para emular el entorno del cliente- tendrá *192.168.11.2*.
 
