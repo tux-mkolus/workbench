@@ -52,7 +52,8 @@ En el caso del **troncal** que va al switch **necesitamos una física** (tambié
 
 ### Archivo de configuración
 
-`[trunk]
+```
+[trunk]
 interface=ether2
 
 [uplink]
@@ -89,13 +90,13 @@ address = 186.138.64.105/29
 vlan = 1005
 description = Iplan 186.138.64.106/29
 map = 192.168.11.106:186.138.64.106
-`
+```
 
 ### Ejecutando el script
 
 Al ejecutar el script con los parámetros `--config archivo.conf --output archivo.rsc`, debería generar este script:
 
-`
+```
 # Uplink interface
 /ip address add interface=ether1 address=192.168.11.2/24 comment="workbench"
 /ip route add distance=1 gateway=192.168.11.1 comment="workbench"
@@ -128,7 +129,7 @@ add address=192.168.11.30/24 comment="workbench/map 192.168.11.30 to 168.121.37.
 add address=192.168.11.106/24 comment="workbench/map 192.168.11.106 to 186.138.64.106/32" interface=ether1
 /ip firewall nat add action=dst-nat chain=dstnat comment="workbench/map 192.168.11.106 to 186.138.64.106/32" dst-address=192.168.11.106 in-interface=ether1 to-addresses=186.138.64.106/32
 /ip firewall nat add action=src-nat chain=srcnat comment="workbench/map 192.168.11.106 to 186.138.64.106/32" src-address=186.138.64.106/32 to-addresses=192.168.11.106
-`
+```
 
 Lo ejecutamos en nuestro *MetaRouter* y todo listo.
 
